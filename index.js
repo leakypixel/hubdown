@@ -20,7 +20,8 @@ module.exports = async function hubdown (markdownString, opts = {}) {
 
   const defaults = {
     runBefore: [],
-    frontmatter: false
+    frontmatter: false,
+    ignore: []
   }
   opts = Object.assign(defaults, opts)
 
@@ -44,9 +45,10 @@ module.exports = async function hubdown (markdownString, opts = {}) {
     content = parsed.content
   }
 
-  const processor = opts.runBefore.length === 0
-    ? defaultProcessor
-    : createProcessor(opts.runBefore)
+  const processor =
+    opts.runBefore.length === 0 && opts.ignore.length === 0
+      ? defaultProcessor
+      : createProcessor(opts.runBefore, opts.ignore)
 
   const file = await processor.process(content)
   Object.assign(data, { content: String(file) })
@@ -68,20 +70,68 @@ function makeHash (markdownString, opts) {
   // deterministic stringifier gets a consistent hash from stringified results
   // object keys are sorted to ensure {a:1, b:2} has the same hash as {b:2, a:1}
   // empty object should become an empty string, not {}
-  const optsString = Object.keys(hashableOpts).length ? stableStringify(hashableOpts) : ''
+  const optsString = Object.keys(hashableOpts).length
+    ? stableStringify(hashableOpts)
+    : ''
 
   return hasha(markdownString + optsString)
 }
 
-function createProcessor (before) {
-  return unified()
-    .use(markdown)
-    .use(before)
-    .use(emoji)
-    .use(remark2rehype, { allowDangerousHTML: true })
-    .use(slug)
-    .use(autolinkHeadings, { behavior: 'wrap' })
-    .use(highlight)
-    .use(raw)
-    .use(html)
+function createProcessor (before, ignore = []) {
+  const plugins = [
+    {
+      name: 'markdown',
+      plugin: markdown,
+      opts: {}
+    },
+    {
+      name: 'before',
+      plugin: before,
+      opts: {}
+    },
+    {
+      name: 'emoji',
+      plugin: emoji,
+      opts: {}
+    },
+    {
+      name: 'remark2rehype',
+      plugin: remark2rehype,
+      opts: { allowDangerousHTML: true }
+    },
+    {
+      name: 'slug',
+      plugin: slug,
+      opts: {}
+    },
+    {
+      name: 'autolinkHeadings',
+      plugin: autolinkHeadings,
+      opts: { behaviour: 'wrap' }
+    },
+    {
+      name: 'highlight',
+      plugin: highlight,
+      opts: {}
+    },
+    {
+      name: 'raw',
+      plugin: raw,
+      opts: {}
+    },
+    {
+      name: 'html',
+      plugin: html,
+      opts: {}
+    }
+  ]
+  const filteredPlugins = plugins.filter(
+    plugin => !ignore.includes(plugin.name)
+  )
+
+  return filteredPlugins.reduce(
+    (acc, plugin) =>
+      plugin.plugin ? acc.use(plugin.plugin, plugin.opts) : acc,
+    unified()
+  )
 }
